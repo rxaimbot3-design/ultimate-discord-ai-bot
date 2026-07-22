@@ -214,9 +214,12 @@ function checkNukerAttackThreshold(userId: string, guildId: string, actionType: 
 }
 
 // Smart Polling Helper to fetch audit logs with retries to handle Discord API eventually consistent delays
-async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 12, delayMs = 300) {
+async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 15, delayMs = 400) {
   for (let i = 0; i < retries; i++) {
-    const logs = await guild.fetchAuditLogs({ limit: 5, type }).catch(() => null);
+    const logs = await guild.fetchAuditLogs({ limit: 50, type }).catch(e => {
+      console.error(`fetchAuditLogs error for type ${type}:`, e);
+      return null;
+    });
     if (logs && logs.entries.size > 0) {
       if (targetId) {
         const entry = logs.entries.find(e => e.targetId === targetId);
@@ -227,6 +230,7 @@ async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetI
     }
     await new Promise(r => setTimeout(r, delayMs)); // Wait and poll again to catch late logs
   }
+  console.log(`[AuditLog Warning] Could not find audit log for type ${type} and target ${targetId} after ${retries} retries.`);
   return null;
 }
 
