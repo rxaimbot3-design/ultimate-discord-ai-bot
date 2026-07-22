@@ -645,6 +645,30 @@ export async function startDiscordBot() {
             ]
           },
           {
+            name: "whitelist-admin",
+            description: "Whitelist an administrator to bypass Zero Trust restrictions",
+            options: [
+              {
+                name: "user",
+                type: 6, // USER
+                description: "The user to whitelist",
+                required: true
+              }
+            ]
+          },
+          {
+            name: "unwhitelist-admin",
+            description: "Remove an administrator from the Zero Trust whitelist",
+            options: [
+              {
+                name: "user",
+                type: 6, // USER
+                description: "The user to remove from whitelist",
+                required: true
+              }
+            ]
+          },
+          {
             name: "setup-verify",
             description: "Deploy the #verify channel with interactive button & enforce verification security"
           },
@@ -913,6 +937,38 @@ export async function startDiscordBot() {
             ? `🚨 **EMERGENCY PANIC LOCKDOWN ACTIVATED!**\nAll channels locked. Sending permissions revoked server-wide.`
             : `🟢 **Emergency Panic Lockdown Deactivated.** Channel permissions restored to normal.`
         });
+        return;
+      }
+
+      if (commandName === "whitelist-admin") {
+        if (interaction.user.id !== guild.ownerId) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner can modify the Zero Trust whitelist.", ephemeral: true });
+          return;
+        }
+        const targetUser = interaction.options.getUser("user");
+        if (!targetUser) {
+          await interaction.reply({ content: "❌ Please specify a valid User.", ephemeral: true });
+          return;
+        }
+        if (!ownerWhitelist.includes(targetUser.id)) {
+          ownerWhitelist.push(targetUser.id);
+        }
+        await interaction.reply({ content: `✅ **WHITELISTED:** <@${targetUser.id}> is now explicitly whitelisted and can bypass Zero Trust restrictions.` });
+        return;
+      }
+
+      if (commandName === "unwhitelist-admin") {
+        if (interaction.user.id !== guild.ownerId) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner can modify the Zero Trust whitelist.", ephemeral: true });
+          return;
+        }
+        const targetUser = interaction.options.getUser("user");
+        if (!targetUser) {
+          await interaction.reply({ content: "❌ Please specify a valid User.", ephemeral: true });
+          return;
+        }
+        ownerWhitelist = ownerWhitelist.filter(id => id !== targetUser.id);
+        await interaction.reply({ content: `🛡️ **REMOVED:** <@${targetUser.id}> has been removed from the whitelist and is now subject to strict Zero Trust policies.` });
         return;
       }
 
