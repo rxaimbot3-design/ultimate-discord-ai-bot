@@ -1,0 +1,6 @@
+{
+  "name": "Creative Workspace",
+  "description": "A beautiful, interactive launchpad and canvas for your web applications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
