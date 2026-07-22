@@ -214,7 +214,7 @@ function checkNukerAttackThreshold(userId: string, guildId: string, actionType: 
 }
 
 // Smart Polling Helper to fetch audit logs with retries to handle Discord API eventually consistent delays
-async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 5, delayMs = 150) {
+async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 12, delayMs = 300) {
   for (let i = 0; i < retries; i++) {
     const logs = await guild.fetchAuditLogs({ limit: 5, type }).catch(() => null);
     if (logs && logs.entries.size > 0) {
@@ -1138,6 +1138,40 @@ export async function startDiscordBot() {
     // ==========================================
 
     // 1. ANTI CHANNEL DELETE / REVERT (<17ms Interception)
+    client.on("channelCreate", async (channel) => {
+      if (!("guild" in channel) || !channel.guild) return;
+      const guild = channel.guild;
+      const startTime = Date.now();
+
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          const responseLatency = Date.now() - startTime;
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel creation of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+          checkNukerAttackThreshold(executor.id, guild.id, "ChannelCreate");
+
+          // Strip ALL roles from Rogue Admin / Staff instantly
+          const member = await guild.members.fetch(executor.id).catch(() => null);
+          if (member && member.id !== guild.ownerId) {
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Creation Attempt").catch(() => {});
+          }
+
+          // Instant Channel Auto-Deletion
+          await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert").catch(e => console.error("Revert error:", e));
+
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED CHANNEL CREATION REVERTED (<17MS)",
+            description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Channel Deletion & Stripped Admin Roles`,
+            color: 0xDC2626
+          });
+        }
+      } catch (err: any) {
+        addBotLog(`Error handling channelCreate event: ${err.message}`, "error");
+      }
+    });
+
     client.on("channelDelete", async (channel) => {
       if (!("guild" in channel) || !channel.guild) return;
       const guild = channel.guild;
@@ -1186,6 +1220,40 @@ export async function startDiscordBot() {
     });
 
     // 2. ANTI ROLE DELETE / ESCALATION (<17ms Interception)
+    client.on("roleCreate", async (role) => {
+      const guild = role.guild;
+      const startTime = Date.now();
+
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          const responseLatency = Date.now() - startTime;
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role creation of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+          checkNukerAttackThreshold(executor.id, guild.id, "RoleCreate");
+
+          // Strip ALL roles from Rogue Admin / Staff instantly
+          const member = await guild.members.fetch(executor.id).catch(() => null);
+          if (member && member.id !== guild.ownerId) {
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Creation Attempt").catch(() => {});
+          }
+
+          // Instant Role Auto-Deletion
+          await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert").catch(e => console.error("Revert error:", e));
+
+          // Send Live Audit Log Embed to #security-logs
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED ROLE CREATION REVERTED (<17MS)",
+            description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Deletion & Stripped Admin Roles`,
+            color: 0xDC2626
+          });
+        }
+      } catch (err: any) {
+        addBotLog(`Error handling roleCreate event: ${err.message}`, "error");
+      }
+    });
+
     client.on("roleDelete", async (role) => {
       const guild = role.guild;
       const startTime = Date.now();
@@ -1266,26 +1334,38 @@ export async function startDiscordBot() {
     // 4. ANTI ROGUE ADMIN ROLE ELEVATION (<17ms Interception)
     client.on("guildMemberUpdate", async (oldMember, newMember) => {
       const guild = newMember.guild;
-      const gainedAdmin = !oldMember.permissions.has(PermissionFlagsBits.Administrator) &&
-                          newMember.permissions.has(PermissionFlagsBits.Administrator);
+      
+      const oldPerms = oldMember.permissions;
+      const newPerms = newMember.permissions;
+      const powerfulPerms = [
+        PermissionFlagsBits.Administrator,
+        PermissionFlagsBits.BanMembers,
+        PermissionFlagsBits.KickMembers,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ManageRoles,
+        PermissionFlagsBits.ManageWebhooks,
+        PermissionFlagsBits.ManageGuild
+      ];
 
-      if (gainedAdmin) {
+      const gainedPowerfulPerm = powerfulPerms.some(perm => !oldPerms.has(perm) && newPerms.has(perm));
+
+      if (gainedPowerfulPerm) {
         try {
           const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
           const executor = entry?.executor;
 
           if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-            addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Rogue Role Escalation detected! Admin/Staff ${executor.tag} granted Administrator permission to ${newMember.user.tag}! Reverting & stripping permissions!`, "error");
+            addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Rogue Role Escalation detected! Admin/Staff ${executor.tag} granted powerful permission(s) to ${newMember.user.tag}! Reverting & stripping permissions!`, "error");
 
             const execMember = await guild.members.fetch(executor.id).catch(() => null);
             if (execMember && execMember.id !== guild.ownerId) {
               await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Admin Permission Escalation").catch(() => {});
             }
-            await newMember.roles.set([], "Zero-Trust Strict Policy: Reverting Unauthorized Admin Escalation").catch(() => {});
+            await newMember.roles.set(oldMember.roles.cache.map(r => r.id), "Zero-Trust Strict Policy: Reverting Unauthorized Permission Escalation").catch(() => {});
 
             await sendLiveAuditAlert(guild, {
-              title: "🚨 UNAUTHORIZED ADMIN ELEVATION BLOCKED (<17MS)",
-              description: `**Target Member:** <@${newMember.id}>\n**Granted By Admin:** <@${executor.id}>\n**Action Taken:** Stripped Admin Roles from both target and offender`,
+              title: "🚨 UNAUTHORIZED ROLE ELEVATION BLOCKED (<17MS)",
+              description: `**Target Member:** <@${newMember.id}>\n**Granted By Admin:** <@${executor.id}>\n**Action Taken:** Reverted target's roles & Stripped all roles from offender`,
               color: 0xDC2626
             });
           }
@@ -1332,7 +1412,7 @@ export async function startDiscordBot() {
         // Ultra-fast 17ms delay for audit log sync
         // Using Smart Polling Retry to ensure accuracy if Discord API is lagging
         try {
-          const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.BotAdd, member.id, 5, 20);
+          const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.BotAdd, member.id);
           const executor = entry?.executor;
 
           if (executor) {
