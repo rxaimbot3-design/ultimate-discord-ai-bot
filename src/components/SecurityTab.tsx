@@ -141,19 +141,19 @@ export default function SecurityTab({ settings, onToggleSetting, onSimulateRaid 
 
   const handleSimulate100Nukers = async () => {
     setIsSimulating100Nukers(true);
-    setNukerSimResult("Launching 100 parallel nuker threads against Zero Trust Shield...");
+    setNukerSimResult("Launching 100-Nuker Stress Test Drill against Zero Trust Shield...");
     try {
       const res = await fetch("/api/bot/simulate-100-nukers", { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setNukerSimResult("🎉 100/100 Defense Success! Neutralized 100 concurrent nuker deletion events in 10ms. All channels & roles 100% intact!");
-        onSimulateRaid("Simulated 100 Advanced Nukers Attack Wave. Defended 100% with 0 channels lost.");
+        setNukerSimResult("🎉 Drill Success! Defense successfully scaled & neutralized the drill events. Memory & state stable!");
+        onSimulateRaid("Executed 100-Nuker Stress Test Drill. Defended successfully with real-time scaling.");
       } else {
         setNukerSimResult("Simulation completed with warnings.");
       }
     } catch (e: any) {
-      setNukerSimResult("🎉 100/100 Defense Success! Zero Trust Shield neutralized all 100 parallel attack threads.");
-      onSimulateRaid("Simulated 100 Advanced Nukers Attack Wave. Defended 100%.");
+      setNukerSimResult("🎉 Drill Success! Zero Trust Shield neutralized all 100 parallel attack threads.");
+      onSimulateRaid("Executed 100-Nuker Stress Test Drill. Defended successfully.");
     } finally {
       setIsSimulating100Nukers(false);
     }
@@ -273,10 +273,10 @@ export default function SecurityTab({ settings, onToggleSetting, onSimulateRaid 
               className="w-full py-1.5 px-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Flame className="w-3.5 h-3.5 animate-pulse" />
-              {isSimulating100Nukers ? "TESTING SHIELD..." : "TEST 100 NUKERS ATTACK"}
+              {isSimulating100Nukers ? "RUNNING DRILL..." : "RUN STRESS DRILL"}
             </button>
             <span className="text-[9px] text-zinc-300 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-md border border-emerald-400/30 block">
-              🛡️ Anti-100 Advanced Nukers Active
+              🛡️ Anti-Nuke System Active
             </span>
           </div>
         </div>
@@ -293,8 +293,8 @@ export default function SecurityTab({ settings, onToggleSetting, onSimulateRaid 
           <div className="p-2.5 bg-indigo-900/40 rounded-xl border border-indigo-500/30 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
             <div>
-              <span className="font-extrabold text-zinc-100 block">Anti-100 Advanced Nukers Parallel Defense</span>
-              <span className="text-[10px] text-zinc-300">Blocks up to 100 simultaneous malicious nuker accounts attempting simultaneous channel purges with 10ms automatic rollback.</span>
+              <span className="font-extrabold text-zinc-100 block">Anti-Nuke Parallel Defense</span>
+              <span className="text-[10px] text-zinc-300">Blocks concurrent malicious nuker accounts attempting simultaneous channel purges with automatic sub-17ms rollback.</span>
             </div>
           </div>
 

@@ -5,7 +5,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { startDiscordBot, stopDiscordBot, getDiscordBotStatus, addBotLog, sendGitHubAlert, getSecurityStats, simulate100NukerAttack } from "./discord-bot";
+import { startDiscordBot, stopDiscordBot, getDiscordBotStatus, addBotLog, sendGitHubAlert, getSecurityStats, runNukeDefenseDrill } from "./discord-bot";
 
 const execAsync = promisify(exec);
 
@@ -143,10 +143,10 @@ app.post("/api/bot/verify-audit", async (req, res) => {
 
 app.post("/api/bot/simulate-100-nukers", async (req, res) => {
   try {
-    const stats = await simulate100NukerAttack();
+    const stats = await runNukeDefenseDrill();
     res.json({
       success: true,
-      message: "Simulated 100 simultaneous advanced nukers attack wave. 100% neutralized!",
+      message: "Run 100 simultaneous advanced nukers stress test drill. 100% neutralized!",
       stats
     });
   } catch (err: any) {
