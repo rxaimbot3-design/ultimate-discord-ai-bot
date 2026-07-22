@@ -207,6 +207,23 @@ function checkNukerAttackThreshold(userId: string, guildId: string, actionType: 
   return false;
 }
 
+// Smart Polling Helper to fetch audit logs with retries to handle Discord API eventually consistent delays
+async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 5, delayMs = 150) {
+  for (let i = 0; i < retries; i++) {
+    const logs = await guild.fetchAuditLogs({ limit: 5, type }).catch(() => null);
+    if (logs && logs.entries.size > 0) {
+      if (targetId) {
+        const entry = logs.entries.find(e => e.targetId === targetId);
+        if (entry) return entry;
+      } else {
+        return logs.entries.first();
+      }
+    }
+    await new Promise(r => setTimeout(r, delayMs)); // Wait and poll again to catch late logs
+  }
+  return null;
+}
+
 // Audit and Enforce Channel Permissions Matrix for Verification System & Verified Role
 export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customRoleName?: string) {
   const targetRoleName = customRoleName || verifiedRoleName;
@@ -1065,8 +1082,7 @@ export async function startDiscordBot() {
       const startTime = Date.now();
 
       try {
-        const auditLogs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.ChannelDelete }).catch(() => null);
-        const entry = auditLogs?.entries.first();
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1113,8 +1129,7 @@ export async function startDiscordBot() {
       const startTime = Date.now();
 
       try {
-        const auditLogs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.RoleDelete }).catch(() => null);
-        const entry = auditLogs?.entries.first();
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleDelete, role.id);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1156,8 +1171,7 @@ export async function startDiscordBot() {
       const startTime = Date.now();
 
       try {
-        const auditLogs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd }).catch(() => null);
-        const entry = auditLogs?.entries.first();
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.MemberBanAdd, ban.user.id);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1195,8 +1209,7 @@ export async function startDiscordBot() {
 
       if (gainedAdmin) {
         try {
-          const auditLogs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberRoleUpdate }).catch(() => null);
-          const entry = auditLogs?.entries.first();
+          const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
           const executor = entry?.executor;
 
           if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1224,8 +1237,7 @@ export async function startDiscordBot() {
       const guild = channel.guild;
 
       try {
-        const auditLogs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.WebhookCreate }).catch(() => null);
-        const entry = auditLogs?.entries.first();
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.WebhookCreate, channel.id);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1256,11 +1268,9 @@ export async function startDiscordBot() {
       const guild = member.guild;
       if (member.user.bot) {
         // Ultra-fast 17ms delay for audit log sync
-        await new Promise(r => setTimeout(r, 17));
-
+        // Using Smart Polling Retry to ensure accuracy if Discord API is lagging
         try {
-          const auditLogs = await guild.fetchAuditLogs({ limit: 5, type: AuditLogEvent.BotAdd }).catch(() => null);
-          const entry = auditLogs?.entries.find(e => e.target?.id === member.id) || auditLogs?.entries.first();
+          const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.BotAdd, member.id, 5, 20);
           const executor = entry?.executor;
 
           if (executor) {
