@@ -173,7 +173,12 @@ export async function sendLiveAuditAlert(guild: Guild, options: {
       embed.addFields(options.fields);
     }
 
-    await logChannel.send({ embeds: [embed] }).catch(() => {});
+    await logChannel.send({ embeds: [embed] }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
   } catch (err) {
     console.error("Failed to send live audit log:", err);
   }
@@ -370,11 +375,31 @@ export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customR
       // Handle Category Channels specially
       if (channel.type === ChannelType.GuildCategory) {
         if (isHiddenByName) {
-          await channel.permissionOverwrites.edit(verifiedRole, { ViewChannel: false }).catch(() => {});
-          await channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false }).catch(() => {});
+          await channel.permissionOverwrites.edit(verifiedRole, { ViewChannel: false }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
+          await channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
         } else {
-          await channel.permissionOverwrites.edit(verifiedRole, { ViewChannel: true }).catch(() => {});
-          await channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false }).catch(() => {});
+          await channel.permissionOverwrites.edit(verifiedRole, { ViewChannel: true }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
+          await channel.permissionOverwrites.edit(guild.roles.everyone, { ViewChannel: false }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
         }
         continue;
       }
@@ -386,13 +411,23 @@ export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customR
           ViewChannel: false,
           SendMessages: false,
           Connect: false
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
         await channel.permissionOverwrites.edit(guild.roles.everyone, {
           ViewChannel: false,
           SendMessages: false,
           Connect: false
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
       } else if (isLockedVCByName) {
         // LOCKED VC CHANNELS -> Viewable by Verified members, but Connect: DENIED for ALL
         lockedVCs++;
@@ -400,13 +435,23 @@ export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customR
           ViewChannel: true,
           Connect: false,
           Speak: false
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
         await channel.permissionOverwrites.edit(guild.roles.everyone, {
           ViewChannel: false,
           Connect: false,
           Speak: false
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
       } else if (isReadOnlyInfoChannel) {
         // READ-ONLY INFO/ANNOUNCEMENT CHANNELS -> Verified can view & read FULL message history, but cannot send messages
         unlockedChannels++;
@@ -415,11 +460,21 @@ export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customR
           ReadMessageHistory: true,
           SendMessages: false,
           AddReactions: true
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
         await channel.permissionOverwrites.edit(guild.roles.everyone, {
           ViewChannel: false
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
       } else {
         // PUBLIC TEXT & VOICE CHANNELS -> HIDDEN FROM @everyone, UNLOCKED WITH FULL MESSAGE HISTORY FOR VERIFIED ROLE
         unlockedChannels++;
@@ -430,7 +485,12 @@ export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customR
             Speak: true,
             UseVAD: true,
             Stream: true
-          }).catch(() => {});
+          }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
         } else {
           await channel.permissionOverwrites.edit(verifiedRole, {
             ViewChannel: true,
@@ -440,12 +500,22 @@ export async function auditAndApplyVerifiedRolePermissions(guild: Guild, customR
             AttachFiles: true,
             UseExternalEmojis: true,
             AddReactions: true
-          }).catch(() => {});
+          }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
         }
 
         await channel.permissionOverwrites.edit(guild.roles.everyone, {
           ViewChannel: false
-        }).catch(() => {});
+        }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
       }
     }
 
@@ -929,7 +999,12 @@ export async function startDiscordBot() {
             await ch.permissionOverwrites.edit(guild.roles.everyone, {
               SendMessages: !panicLockdownActive,
               Connect: !panicLockdownActive
-            }).catch(() => {});
+            }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
         }
 
@@ -1159,7 +1234,12 @@ export async function startDiscordBot() {
           // Strip ALL roles from Rogue Admin / Staff instantly
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Creation Attempt").catch(() => {});
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Creation Attempt").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
 
           // Instant Channel Auto-Deletion
@@ -1193,7 +1273,12 @@ export async function startDiscordBot() {
           // Strip ALL roles from Rogue Admin / Staff instantly (<17ms)
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Deletion Attempt").catch(() => {});
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Deletion Attempt").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
 
           // Instant Channel Auto-Restoration
@@ -1240,7 +1325,12 @@ export async function startDiscordBot() {
           // Strip ALL roles from Rogue Admin / Staff instantly
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Creation Attempt").catch(() => {});
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Creation Attempt").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
 
           // Instant Role Auto-Deletion
@@ -1274,7 +1364,12 @@ export async function startDiscordBot() {
           // Strip ALL roles from Rogue Admin / Staff instantly (<17ms)
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Deletion Attempt").catch(() => {});
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Deletion Attempt").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
 
           // Instant Role Auto-Restoration
@@ -1300,6 +1395,42 @@ export async function startDiscordBot() {
     });
 
     // 3. ANTI MASS BAN / KICK (<17ms Interception)
+    client.on("guildMemberRemove", async (member) => {
+      const guild = member.guild;
+      const startTime = Date.now();
+
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.MemberKick, member.id);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          const responseLatency = Date.now() - startTime;
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized Kick detected by Admin/Staff ${executor.tag}! Target: ${member.user.tag} (${responseLatency}ms)`, "error");
+          checkNukerAttackThreshold(executor.id, guild.id, "MemberKick");
+
+          // Strip ALL roles from Rogue Admin / Staff instantly
+          const attacker = await guild.members.fetch(executor.id).catch(() => null);
+          if (attacker && attacker.id !== guild.ownerId) {
+            await attacker.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Kick Trigger").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
+          }
+
+          // Send Live Audit Log Embed to #security-logs
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED KICK INTERCEPTED (<17MS)",
+            description: `**Victim:** ${member.user.tag}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Stripped Admin Roles from Attacker`,
+            color: 0xDC2626
+          });
+        }
+      } catch (err: any) {
+        addBotLog(`Error handling guildMemberRemove event: ${err.message}`, "error");
+      }
+    });
+
     client.on("guildBanAdd", async (ban) => {
       const guild = ban.guild;
       const startTime = Date.now();
@@ -1314,13 +1445,28 @@ export async function startDiscordBot() {
           checkNukerAttackThreshold(executor.id, guild.id, "BanAdd");
 
           // Auto Unban victim
-          await guild.bans.remove(ban.user.id, "Zero Trust Anti-Mass-Ban Auto Reversal").catch(() => {});
+          await guild.bans.remove(ban.user.id, "Zero Trust Anti-Mass-Ban Auto Reversal").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
           // Ban and strip attacker
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Mass Ban Trigger").catch(() => {});
-            await member.ban({ reason: "Zero Trust Anti-Mass-Ban Attacker Neutralization" }).catch(() => {});
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Mass Ban Trigger").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
+            await member.ban({ reason: "Zero Trust Anti-Mass-Ban Attacker Neutralization" }).catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
 
           // Send Live Audit Log Embed to #security-logs
@@ -1363,9 +1509,19 @@ export async function startDiscordBot() {
 
             const execMember = await guild.members.fetch(executor.id).catch(() => null);
             if (execMember && execMember.id !== guild.ownerId) {
-              await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Admin Permission Escalation").catch(() => {});
+              await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Admin Permission Escalation").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
             }
-            await newMember.roles.set(oldMember.roles.cache.map(r => r.id), "Zero-Trust Strict Policy: Reverting Unauthorized Permission Escalation").catch(() => {});
+            await newMember.roles.set(oldMember.roles.cache.map(r => r.id), "Zero-Trust Strict Policy: Reverting Unauthorized Permission Escalation").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
             await sendLiveAuditAlert(guild, {
               title: "🚨 UNAUTHORIZED ROLE ELEVATION BLOCKED (<17MS)",
@@ -1383,7 +1539,7 @@ export async function startDiscordBot() {
       const guild = channel.guild;
 
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.WebhookCreate, channel.id);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.WebhookCreate);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1391,13 +1547,23 @@ export async function startDiscordBot() {
 
           const execMember = await guild.members.fetch(executor.id).catch(() => null);
           if (execMember && execMember.id !== guild.ownerId) {
-            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Webhook Creation").catch(() => {});
+            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Webhook Creation").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
           }
 
           // Delete created webhooks
           const webhooks = await (channel as TextChannel).fetchWebhooks().catch(() => null);
           if (webhooks) {
-            webhooks.forEach(wh => wh.delete("Zero Trust Unauthorized Webhook Removal").catch(() => {}));
+            webhooks.forEach(wh => wh.delete("Zero Trust Unauthorized Webhook Removal").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  }));
           }
 
           await sendLiveAuditAlert(guild, {
@@ -1424,12 +1590,22 @@ export async function startDiscordBot() {
               addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized bot '${member.user.tag}' added by Admin/Staff ${executor.tag}! Kicking bot & stripping staff roles instantly (<17ms).`, "error");
               
               // KICK THE UNAPPROVED BOT INSTANTLY
-              await member.kick("Zero Trust Anti-Bot-Add Policy Violation: Unwhitelisted Bot Add").catch(() => {});
+              await member.kick("Zero Trust Anti-Bot-Add Policy Violation: Unwhitelisted Bot Add").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
               // STRIP ROLES FROM THE ADMIN WHO ADDED IT
               const execMember = await guild.members.fetch(executor.id).catch(() => null);
               if (execMember && execMember.id !== guild.ownerId) {
-                await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Bot Addition").catch(() => {});
+                await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Bot Addition").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
               }
 
               // Send Live Audit Log Embed to #security-logs
@@ -1445,7 +1621,12 @@ export async function startDiscordBot() {
             // Executor unknown, but bot was added and isn't our bot -> Kick unapproved bot by default instantly
             if (member.id !== client.user?.id) {
               addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unapproved bot '${member.user.tag}' joined! Kicking bot instantly for Zero Trust Security.`, "error");
-              await member.kick("Zero Trust Anti-Bot-Add Policy Violation").catch(() => {});
+              await member.kick("Zero Trust Anti-Bot-Add Policy Violation").catch(async (e: any) => { 
+    console.error("Discord API Error:", e.message); 
+    if (e.message && e.message.includes("Missing Permissions")) {
+      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
+    }
+  });
 
               await sendLiveAuditAlert(guild, {
                 title: "🚨 UNAPPROVED BOT JOINED & KICKED (<17MS)",
