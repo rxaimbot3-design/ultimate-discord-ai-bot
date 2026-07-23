@@ -193,6 +193,33 @@ function isOwnerOrWhitelisted(memberId: string, guild: Guild): boolean {
 }
 
 
+
+// 🛡️ BOT ACTION MEMORY SETS (Prevents Infinite Feedback Loops with Bot's Own Actions)
+const botCreatedChannelIds = new Set<string>();
+const botDeletedChannelIds = new Set<string>();
+const botCreatedRoleIds = new Set<string>();
+const botDeletedRoleIds = new Set<string>();
+
+function markBotCreatedChannel(channelId: string) {
+  botCreatedChannelIds.add(channelId);
+  setTimeout(() => botCreatedChannelIds.delete(channelId), 30000);
+}
+
+function markBotDeletedChannel(channelId: string) {
+  botDeletedChannelIds.add(channelId);
+  setTimeout(() => botDeletedChannelIds.delete(channelId), 30000);
+}
+
+function markBotCreatedRole(roleId: string) {
+  botCreatedRoleIds.add(roleId);
+  setTimeout(() => botCreatedRoleIds.delete(roleId), 30000);
+}
+
+function markBotDeletedRole(roleId: string) {
+  botDeletedRoleIds.add(roleId);
+  setTimeout(() => botDeletedRoleIds.delete(roleId), 30000);
+}
+
 // 🚨 REAL GOD MODE: EVENT VELOCITY TRACKING 🚨
 const eventVelocity = {
   channelCreate: { count: 0, lastReset: Date.now() },
@@ -1369,62 +1396,59 @@ export async function startDiscordBot() {
     // ==========================================
     // 🛡️ ZERO TRUST ULTRA-FAST 17MS ANTI-NUKE EVENT LISTENERS
     // ==========================================
-
-    // 1. ANTI CHANNEL DELETE / REVERT (<17ms Interception)
     client.on("channelCreate", async (channel) => {
       if (!("guild" in channel) || !channel.guild) return;
       const guild = channel.guild;
       const startTime = Date.now();
-      
+
+      // Memory Check: Ignore if created by the bot itself
+      if (botCreatedChannelIds.has(channel.id)) {
+        botCreatedChannelIds.delete(channel.id);
+        return;
+      }
+
+      const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id, 1, 300).catch(() => null);
+      const executor = entry?.executor;
+
+      // Ignore if executor is Owner or Whitelisted or Bot itself
+      if (executor && isOwnerOrWhitelisted(executor.id, guild)) {
+        return;
+      }
+
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
       const isUnderMassAttack = checkVelocity("channelCreate");
 
-      if (isPanic || isUnderMassAttack || isQuarantineActive) {
-          if (isUnderMassAttack) emergencyQuarantine(guild);
-          // INSTANT BLIND REVERT - NO API LOG CHECKS to prevent rate limits
-          await channel.delete("GOD MODE: Blind Revert (Mass Attack Detected)").catch(() => {});
-          return;
-      }
+      if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+        const responseLatency = Date.now() - startTime;
+        addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel creation of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+        checkNukerAttackThreshold(executor.id, guild.id, "ChannelCreate");
 
-      try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id, 1, 300); // lower retries for performance
-        const executor = entry?.executor;
-
-        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-          const responseLatency = Date.now() - startTime;
-          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel creation of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
-          checkNukerAttackThreshold(executor.id, guild.id, "ChannelCreate");
-
-          // Strip ALL roles from Rogue Admin / Staff instantly
-          // Direct Punishment Role
-          const member = await guild.members.fetch(executor.id).catch(() => null);
-          if (member && member.id !== guild.ownerId) {
-            // Create punishment role if it doesn't exist
-            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
-            if (!punishmentRole) {
-              punishmentRole = await guild.roles.create({
-                name: "Gay Punishment",
-                color: 0x000000,
-                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
-              }).catch(() => null);
-            }
-            // Strip roles and assign punishment role
-            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
+        const member = await guild.members.fetch(executor.id).catch(() => null);
+        if (member && member.id !== guild.ownerId) {
+          let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+          if (!punishmentRole) {
+            punishmentRole = await guild.roles.create({
+              name: "Gay Punishment",
+              color: 0x000000,
+              reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+            }).catch(() => null);
+            if (punishmentRole) markBotCreatedRole(punishmentRole.id);
           }
-
-          // Delete if not already deleted by panic
-          if (!isPanic) {
-              await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert").catch(() => {});
-          }
-
-          await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED CHANNEL CREATION REVERTED (<17MS)",
-            description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Channel Deletion & Stripped Admin Roles`,
-            color: 0xDC2626
-          });
+          await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
         }
-      } catch (err: any) {
-        // ignore
+
+        markBotDeletedChannel(channel.id);
+        await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert").catch(() => {});
+
+        await sendLiveAuditAlert(guild, {
+          title: "🚨 UNAUTHORIZED CHANNEL CREATION REVERTED (<17MS)",
+          description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Channel Deletion & Stripped Admin Roles`,
+          color: 0xDC2626
+        });
+      } else if (isPanic || isUnderMassAttack || isQuarantineActive) {
+        if (isUnderMassAttack) emergencyQuarantine(guild);
+        markBotDeletedChannel(channel.id);
+        await channel.delete("GOD MODE: Blind Revert (Mass Attack Detected)").catch(() => {});
       }
     });
 
@@ -1433,64 +1457,72 @@ export async function startDiscordBot() {
       const guild = channel.guild;
       const startTime = Date.now();
 
+      // Memory Check: Ignore if deleted by the bot itself
+      if (botDeletedChannelIds.has(channel.id)) {
+        botDeletedChannelIds.delete(channel.id);
+        return;
+      }
+
+      const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id, 1, 300).catch(() => null);
+      const executor = entry?.executor;
+
+      // Ignore if executor is Owner or Whitelisted or Bot itself
+      if (executor && isOwnerOrWhitelisted(executor.id, guild)) {
+        return;
+      }
+
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
       const isUnderMassAttack = checkVelocity("channelDelete");
 
-      if (isPanic || isUnderMassAttack || isQuarantineActive) {
-          if (isUnderMassAttack) emergencyQuarantine(guild);
-          // BLIND RECREATE
-          await guild.channels.create({
-            name: channel.name,
-            type: channel.type,
-            permissionOverwrites: channel.permissionOverwrites?.cache || [],
-            parent: channel.parentId,
-            reason: "GOD MODE: Blind Recreate (Mass Attack Detected)"
-          }).catch(() => {});
-          return;
-      }
+      if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+        const responseLatency = Date.now() - startTime;
+        addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel deletion of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+        checkNukerAttackThreshold(executor.id, guild.id, "ChannelDelete");
 
-      try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id, 1, 300);
-        const executor = entry?.executor;
-
-        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-          const responseLatency = Date.now() - startTime;
-          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel deletion of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
-          checkNukerAttackThreshold(executor.id, guild.id, "ChannelDelete");
-
-          // Direct Punishment Role
-          const member = await guild.members.fetch(executor.id).catch(() => null);
-          if (member && member.id !== guild.ownerId) {
-            // Create punishment role if it doesn't exist
-            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
-            if (!punishmentRole) {
-              punishmentRole = await guild.roles.create({
-                name: "Gay Punishment",
-                color: 0x000000,
-                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
-              }).catch(() => null);
-            }
-            // Strip roles and assign punishment role
-            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
+        const member = await guild.members.fetch(executor.id).catch(() => null);
+        if (member && member.id !== guild.ownerId) {
+          let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+          if (!punishmentRole) {
+            punishmentRole = await guild.roles.create({
+              name: "Gay Punishment",
+              color: 0x000000,
+              reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+            }).catch(() => null);
+            if (punishmentRole) markBotCreatedRole(punishmentRole.id);
           }
-
-          if (!isPanic) {
-              await guild.channels.create({
-                name: channel.name,
-                type: channel.type,
-                permissionOverwrites: channel.permissionOverwrites?.cache || [],
-                parent: channel.parentId,
-                reason: "Zero Trust 100/100 Instant Anti-Nuke Channel Deletion Revert"
-              }).catch(() => {});
-          }
-
-          await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED CHANNEL DELETION REVERTED (<17MS)",
-            description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Channel Re-Creation & Stripped Admin Roles`,
-            color: 0xDC2626
-          });
+          await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
         }
-      } catch (err: any) {
+
+        const restoredCh = await guild.channels.create({
+          name: channel.name,
+          type: channel.type,
+          permissionOverwrites: channel.permissionOverwrites?.cache || [],
+          parent: channel.parentId,
+          reason: "Zero Trust 100/100 Instant Anti-Nuke Channel Deletion Revert"
+        }).catch(() => null);
+
+        if (restoredCh) {
+          markBotCreatedChannel(restoredCh.id);
+        }
+
+        await sendLiveAuditAlert(guild, {
+          title: "🚨 UNAUTHORIZED CHANNEL DELETION REVERTED (<17MS)",
+          description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Channel Re-Creation & Stripped Admin Roles`,
+          color: 0xDC2626
+        });
+      } else if (isPanic || isUnderMassAttack || isQuarantineActive) {
+        if (isUnderMassAttack) emergencyQuarantine(guild);
+        const restoredCh = await guild.channels.create({
+          name: channel.name,
+          type: channel.type,
+          permissionOverwrites: channel.permissionOverwrites?.cache || [],
+          parent: channel.parentId,
+          reason: "GOD MODE: Blind Recreate (Mass Attack Detected)"
+        }).catch(() => null);
+
+        if (restoredCh) {
+          markBotCreatedChannel(restoredCh.id);
+        }
       }
     });
 
@@ -1498,51 +1530,53 @@ export async function startDiscordBot() {
       const guild = role.guild;
       const startTime = Date.now();
 
+      // Memory Check: Ignore if created by the bot itself
+      if (botCreatedRoleIds.has(role.id)) {
+        botCreatedRoleIds.delete(role.id);
+        return;
+      }
+
+      const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id, 1, 300).catch(() => null);
+      const executor = entry?.executor;
+
+      if (executor && isOwnerOrWhitelisted(executor.id, guild)) {
+        return;
+      }
+
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
       const isUnderMassAttack = checkVelocity("roleCreate");
 
-      if (isPanic || isUnderMassAttack || isQuarantineActive) {
-          if (isUnderMassAttack) emergencyQuarantine(guild);
-          await role.delete("GOD MODE: Blind Revert (Mass Attack Detected)").catch(() => {});
-          return;
-      }
+      if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+        const responseLatency = Date.now() - startTime;
+        addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role creation of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+        checkNukerAttackThreshold(executor.id, guild.id, "RoleCreate");
 
-      try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id, 1, 300);
-        const executor = entry?.executor;
-
-        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-          const responseLatency = Date.now() - startTime;
-          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role creation of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
-          checkNukerAttackThreshold(executor.id, guild.id, "RoleCreate");
-
-          // Direct Punishment Role
-          const member = await guild.members.fetch(executor.id).catch(() => null);
-          if (member && member.id !== guild.ownerId) {
-            // Create punishment role if it doesn't exist
-            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
-            if (!punishmentRole) {
-              punishmentRole = await guild.roles.create({
-                name: "Gay Punishment",
-                color: 0x000000,
-                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
-              }).catch(() => null);
-            }
-            // Strip roles and assign punishment role
-            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
+        const member = await guild.members.fetch(executor.id).catch(() => null);
+        if (member && member.id !== guild.ownerId) {
+          let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+          if (!punishmentRole) {
+            punishmentRole = await guild.roles.create({
+              name: "Gay Punishment",
+              color: 0x000000,
+              reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+            }).catch(() => null);
+            if (punishmentRole) markBotCreatedRole(punishmentRole.id);
           }
-
-          if (!isPanic) {
-              await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert").catch(() => {});
-          }
-
-          await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED ROLE CREATION REVERTED (<17MS)",
-            description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Deletion & Stripped Admin Roles`,
-            color: 0xDC2626
-          });
+          await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
         }
-      } catch (err: any) {
+
+        markBotDeletedRole(role.id);
+        await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert").catch(() => {});
+
+        await sendLiveAuditAlert(guild, {
+          title: "🚨 UNAUTHORIZED ROLE CREATION REVERTED (<17MS)",
+          description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Deletion & Stripped Admin Roles`,
+          color: 0xDC2626
+        });
+      } else if (isPanic || isUnderMassAttack || isQuarantineActive) {
+        if (isUnderMassAttack) emergencyQuarantine(guild);
+        markBotDeletedRole(role.id);
+        await role.delete("GOD MODE: Blind Revert (Mass Attack Detected)").catch(() => {});
       }
     });
 
@@ -1550,63 +1584,73 @@ export async function startDiscordBot() {
       const guild = role.guild;
       const startTime = Date.now();
 
-      const isPanic = trackGuildActionAndCheckPanic(guild.id);
-      if (isPanic) {
-          await guild.roles.create({
-            name: role.name,
-            color: role.color,
-            hoist: role.hoist,
-            permissions: role.permissions,
-            position: role.position,
-            mentionable: role.mentionable,
-            reason: "Zero Trust 100/100 Instant Anti-Nuke Role Deletion Revert (PANIC MODE)"
-          }).catch(() => {});
+      // Memory Check: Ignore if deleted by the bot itself
+      if (botDeletedRoleIds.has(role.id)) {
+        botDeletedRoleIds.delete(role.id);
+        return;
       }
 
-      try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleDelete, role.id, 2, 500);
-        const executor = entry?.executor;
+      const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleDelete, role.id, 1, 300).catch(() => null);
+      const executor = entry?.executor;
 
-        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-          const responseLatency = Date.now() - startTime;
-          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role deletion of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
-          checkNukerAttackThreshold(executor.id, guild.id, "RoleDelete");
+      if (executor && isOwnerOrWhitelisted(executor.id, guild)) {
+        return;
+      }
 
-          // Direct Punishment Role
-          const member = await guild.members.fetch(executor.id).catch(() => null);
-          if (member && member.id !== guild.ownerId) {
-            // Create punishment role if it doesn't exist
-            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
-            if (!punishmentRole) {
-              punishmentRole = await guild.roles.create({
-                name: "Gay Punishment",
-                color: 0x000000,
-                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
-              }).catch(() => null);
-            }
-            // Strip roles and assign punishment role
-            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+
+      if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+        const responseLatency = Date.now() - startTime;
+        addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role deletion of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+        checkNukerAttackThreshold(executor.id, guild.id, "RoleDelete");
+
+        const member = await guild.members.fetch(executor.id).catch(() => null);
+        if (member && member.id !== guild.ownerId) {
+          let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+          if (!punishmentRole) {
+            punishmentRole = await guild.roles.create({
+              name: "Gay Punishment",
+              color: 0x000000,
+              reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+            }).catch(() => null);
+            if (punishmentRole) markBotCreatedRole(punishmentRole.id);
           }
-
-          if (!isPanic) {
-              await guild.roles.create({
-                name: role.name,
-                color: role.color,
-                hoist: role.hoist,
-                permissions: role.permissions,
-                position: role.position,
-                mentionable: role.mentionable,
-                reason: "Zero Trust 100/100 Instant Anti-Nuke Role Deletion Revert"
-              }).catch(() => {});
-          }
-
-          await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED ROLE DELETION REVERTED (<17MS)",
-            description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Re-Creation & Stripped Admin Roles`,
-            color: 0xDC2626
-          });
+          await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
         }
-      } catch (err: any) {
+
+        const restoredRole = await guild.roles.create({
+          name: role.name,
+          color: role.color,
+          hoist: role.hoist,
+          permissions: role.permissions,
+          position: role.position,
+          mentionable: role.mentionable,
+          reason: "Zero Trust 100/100 Instant Anti-Nuke Role Deletion Revert"
+        }).catch(() => null);
+
+        if (restoredRole) {
+          markBotCreatedRole(restoredRole.id);
+        }
+
+        await sendLiveAuditAlert(guild, {
+          title: "🚨 UNAUTHORIZED ROLE DELETION REVERTED (<17MS)",
+          description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Re-Creation & Stripped Admin Roles`,
+          color: 0xDC2626
+        });
+      } else if (isPanic) {
+        const restoredRole = await guild.roles.create({
+          name: role.name,
+          color: role.color,
+          hoist: role.hoist,
+          permissions: role.permissions,
+          position: role.position,
+          mentionable: role.mentionable,
+          reason: "Zero Trust 100/100 Instant Anti-Nuke Role Deletion Revert (PANIC MODE)"
+        }).catch(() => null);
+
+        if (restoredRole) {
+          markBotCreatedRole(restoredRole.id);
+        }
       }
     });
 
