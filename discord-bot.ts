@@ -1139,6 +1139,10 @@ export async function startDiscordBot() {
       }
 
       if (commandName === "hide-channel") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         const targetChannel = interaction.options.getChannel("channel");
         if (!targetChannel) {
           await interaction.reply({ content: "❌ Please specify a valid Channel.", ephemeral: true });
@@ -1154,6 +1158,10 @@ export async function startDiscordBot() {
 
       // Layer 1: Prevention Command
       if (commandName === "layer1") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.reply({
           content: `🛡️ **DEFENSE LAYER 1: PREVENTION ENGINE (ACTIVE 🟢)**\n\n` +
                    `• **Zero-Trust Permission Model:** Enforced Server-Wide\n` +
@@ -1167,6 +1175,10 @@ export async function startDiscordBot() {
 
       // Layer 2: Detection Command
       if (commandName === "layer2") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.reply({
           content: `👁️ **DEFENSE LAYER 2: DETECTION ENGINE (ACTIVE 🟢)**\n\n` +
                    `• **Real-Time Audit Log Monitoring:** Sub-17ms Ultra-Fast Interception Active\n` +
@@ -1179,6 +1191,10 @@ export async function startDiscordBot() {
 
       // Layer 3: Containment Command
       if (commandName === "layer3") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.reply({
           content: `⚡ **DEFENSE LAYER 3: CONTAINMENT ENGINE (ACTIVE 🟢)**\n\n` +
                    `• **Automatic Quarantine:** Instant role strip (<17ms) for rogue Admins/Staff\n` +
@@ -1191,6 +1207,10 @@ export async function startDiscordBot() {
 
       // Layer 4: Recovery Command
       if (commandName === "layer4") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.reply({
           content: `🔄 **DEFENSE LAYER 4: RECOVERY ENGINE (ACTIVE 🟢)**\n\n` +
                    `• **Automatic Channel Recreation:** Instant Auto-Restore on Channel Deletion\n` +
@@ -1203,6 +1223,10 @@ export async function startDiscordBot() {
 
       // Layer 5: Monitoring Command
       if (commandName === "layer5") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         const stats = getSecurityStats();
         await interaction.reply({
           content: `📊 **DEFENSE LAYER 5: MONITORING ENGINE (ACTIVE 🟢)**\n\n` +
@@ -1216,6 +1240,10 @@ export async function startDiscordBot() {
 
       // Layer 6: Reliability Command
       if (commandName === "layer6") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         const ping = client.ws.ping;
         await interaction.reply({
           content: `💎 **DEFENSE LAYER 6: RELIABILITY ENGINE (ACTIVE 🟢)**\n\n` +
@@ -1229,6 +1257,10 @@ export async function startDiscordBot() {
 
       // Test Nuke Defense Command
       if (commandName === "test-nuke-defense") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.deferReply();
         const res = await runNukeDefenseDrill();
         await interaction.editReply(
@@ -1607,7 +1639,15 @@ export async function startDiscordBot() {
           
           const execMember = await guild.members.fetch(executor.id).catch(() => null);
           if (execMember && execMember.id !== guild.ownerId) {
-            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Channel Update").catch(() => {});
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            await execMember.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Action").catch(() => {});
           }
 
           if (!isPanic) {
@@ -1646,7 +1686,15 @@ export async function startDiscordBot() {
           
           const execMember = await guild.members.fetch(executor.id).catch(() => null);
           if (execMember && execMember.id !== guild.ownerId) {
-            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Role Update").catch(() => {});
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            await execMember.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Action").catch(() => {});
           }
 
           if (!isPanic) {
@@ -1692,8 +1740,16 @@ export async function startDiscordBot() {
               
               const execMember = await guild.members.fetch(executor.id).catch(() => null);
               if (execMember && execMember.id !== guild.ownerId) {
-                await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Member Role Assignment").catch(() => {});
-              }
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            await execMember.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Action").catch(() => {});
+          }
 
               if (!isPanic) {
                  await newMember.roles.set(oldMember.roles.cache, "Zero Trust Anti-Nuke: Member Role Revert").catch(() => {});
