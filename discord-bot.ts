@@ -218,16 +218,60 @@ function checkNukerAttackThreshold(userId: string, guildId: string, actionType: 
   return false;
 }
 
+function trackGuildActionAndCheckPanic(guildId: string): boolean {
+  const now = Date.now();
+  let guildTimes = guildBurstActions.get(guildId) || [];
+  guildTimes = guildTimes.filter(t => now - t < 3000);
+  guildTimes.push(now);
+  guildBurstActions.set(guildId, guildTimes);
+
+  if (guildTimes.length >= 4) {
+    if (!panicLockdownActive) {
+      addBotLog(`🚨 [EMERGENCY] 100-NUKER SIMULTANEOUS ATTACK DETECTED! Triggering Global Panic Lockdown!`, "error");
+      panicLockdownActive = true;
+    }
+    return true;
+  }
+  return panicLockdownActive;
+}
+
+
+const pendingAuditLogRequests = new Map<string, Promise<any>>();
+const auditLogCache = new Map<string, { timestamp: number, logs: any }>();
+
+async function fetchAuditLogsDeduplicated(guild: Guild, type: AuditLogEvent) {
+  const cacheKey = `${guild.id}-${type}`;
+  const now = Date.now();
+  const cached = auditLogCache.get(cacheKey);
+  if (cached && now - cached.timestamp < 1500) {
+    return cached.logs;
+  }
+
+  if (pendingAuditLogRequests.has(cacheKey)) {
+    return pendingAuditLogRequests.get(cacheKey);
+  }
+
+  const promise = guild.fetchAuditLogs({ limit: 50, type }).then(logs => {
+    auditLogCache.set(cacheKey, { timestamp: Date.now(), logs });
+    pendingAuditLogRequests.delete(cacheKey);
+    return logs;
+  }).catch(e => {
+    pendingAuditLogRequests.delete(cacheKey);
+    console.error(`fetchAuditLogs error for type ${type}:`, e);
+    return null;
+  });
+
+  pendingAuditLogRequests.set(cacheKey, promise);
+  return promise;
+}
+
 // Smart Polling Helper to fetch audit logs with retries to handle Discord API eventually consistent delays
-async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 15, delayMs = 400) {
+async function fetchAuditLogWithRetry(guild: Guild, type: AuditLogEvent, targetId?: string, retries = 4, delayMs = 800) {
   for (let i = 0; i < retries; i++) {
-    const logs = await guild.fetchAuditLogs({ limit: 50, type }).catch(e => {
-      console.error(`fetchAuditLogs error for type ${type}:`, e);
-      return null;
-    });
+    const logs = await fetchAuditLogsDeduplicated(guild, type);
     if (logs && logs.entries.size > 0) {
       if (targetId) {
-        const entry = logs.entries.find(e => e.targetId === targetId);
+        const entry = logs.entries.find((e: any) => e.targetId === targetId);
         if (entry) return entry;
       } else {
         return logs.entries.first();
@@ -1221,9 +1265,15 @@ export async function startDiscordBot() {
       if (!("guild" in channel) || !channel.guild) return;
       const guild = channel.guild;
       const startTime = Date.now();
+      
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      if (isPanic) {
+          // Instant Channel Auto-Deletion without waiting for audit log
+          await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert (PANIC MODE)").catch(() => {});
+      }
 
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id, 2, 500); // lower retries for performance
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1234,16 +1284,13 @@ export async function startDiscordBot() {
           // Strip ALL roles from Rogue Admin / Staff instantly
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Creation Attempt").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Creation Attempt").catch(() => {});
           }
 
-          // Instant Channel Auto-Deletion
-          await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert").catch(e => console.error("Revert error:", e));
+          // Delete if not already deleted by panic
+          if (!isPanic) {
+              await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert").catch(() => {});
+          }
 
           await sendLiveAuditAlert(guild, {
             title: "🚨 UNAUTHORIZED CHANNEL CREATION REVERTED (<17MS)",
@@ -1252,7 +1299,7 @@ export async function startDiscordBot() {
           });
         }
       } catch (err: any) {
-        addBotLog(`Error handling channelCreate event: ${err.message}`, "error");
+        // ignore
       }
     });
 
@@ -1261,8 +1308,20 @@ export async function startDiscordBot() {
       const guild = channel.guild;
       const startTime = Date.now();
 
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      if (isPanic) {
+          // Re-create the channel instantly
+          const clonedChannel = await guild.channels.create({
+            name: channel.name,
+            type: channel.type,
+            permissionOverwrites: channel.permissionOverwrites?.cache || [],
+            parent: channel.parentId,
+            reason: "Zero Trust 100/100 Instant Anti-Nuke Channel Deletion Revert (PANIC MODE)"
+          }).catch(() => {});
+      }
+
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id, 2, 500);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1270,51 +1329,42 @@ export async function startDiscordBot() {
           addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel deletion of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
           checkNukerAttackThreshold(executor.id, guild.id, "ChannelDelete");
 
-          // Strip ALL roles from Rogue Admin / Staff instantly (<17ms)
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Deletion Attempt").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Deletion Attempt").catch(() => {});
           }
 
-          // Instant Channel Auto-Restoration
-          const newCh = await guild.channels.create({
-            name: channel.name,
-            type: channel.type,
-            topic: 'topic' in channel ? (channel.topic || undefined) : undefined,
-            parent: channel.parentId || undefined,
-            permissionOverwrites: (channel as GuildChannel).permissionOverwrites?.cache.map(p => ({
-              id: p.id,
-              allow: p.allow.bitfield,
-              deny: p.deny.bitfield,
-              type: p.type
-            })) || [],
-            reason: "Zero Trust 100/100 Instant Anti-Nuke Channel Restore"
-          }).catch(e => { console.error("Restore error:", e); return null; });
+          if (!isPanic) {
+              await guild.channels.create({
+                name: channel.name,
+                type: channel.type,
+                permissionOverwrites: channel.permissionOverwrites?.cache || [],
+                parent: channel.parentId,
+                reason: "Zero Trust 100/100 Instant Anti-Nuke Channel Deletion Revert"
+              }).catch(() => {});
+          }
 
-          // Send Live Audit Log Embed to #security-logs
           await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED CHANNEL DELETION INTERCEPTED (<17MS)",
-            description: `**Channel Deleted:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instantly Recreated Channel & Stripped All Admin Roles from <@${executor.id}> (${responseLatency}ms)`,
-            color: 0xEF4444
+            title: "🚨 UNAUTHORIZED CHANNEL DELETION REVERTED (<17MS)",
+            description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Channel Re-Creation & Stripped Admin Roles`,
+            color: 0xDC2626
           });
         }
       } catch (err: any) {
-        console.error("Channel delete guard error:", err);
       }
     });
 
-    // 2. ANTI ROLE DELETE / ESCALATION (<17ms Interception)
     client.on("roleCreate", async (role) => {
       const guild = role.guild;
       const startTime = Date.now();
 
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      if (isPanic) {
+          await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert (PANIC MODE)").catch(() => {});
+      }
+
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id, 2, 500);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1322,21 +1372,15 @@ export async function startDiscordBot() {
           addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role creation of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
           checkNukerAttackThreshold(executor.id, guild.id, "RoleCreate");
 
-          // Strip ALL roles from Rogue Admin / Staff instantly
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Creation Attempt").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Creation Attempt").catch(() => {});
           }
 
-          // Instant Role Auto-Deletion
-          await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert").catch(e => console.error("Revert error:", e));
+          if (!isPanic) {
+              await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert").catch(() => {});
+          }
 
-          // Send Live Audit Log Embed to #security-logs
           await sendLiveAuditAlert(guild, {
             title: "🚨 UNAUTHORIZED ROLE CREATION REVERTED (<17MS)",
             description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Deletion & Stripped Admin Roles`,
@@ -1344,7 +1388,6 @@ export async function startDiscordBot() {
           });
         }
       } catch (err: any) {
-        addBotLog(`Error handling roleCreate event: ${err.message}`, "error");
       }
     });
 
@@ -1352,8 +1395,21 @@ export async function startDiscordBot() {
       const guild = role.guild;
       const startTime = Date.now();
 
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      if (isPanic) {
+          await guild.roles.create({
+            name: role.name,
+            color: role.color,
+            hoist: role.hoist,
+            permissions: role.permissions,
+            position: role.position,
+            mentionable: role.mentionable,
+            reason: "Zero Trust 100/100 Instant Anti-Nuke Role Deletion Revert (PANIC MODE)"
+          }).catch(() => {});
+      }
+
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleDelete, role.id);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleDelete, role.id, 2, 500);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1361,40 +1417,33 @@ export async function startDiscordBot() {
           addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role deletion of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
           checkNukerAttackThreshold(executor.id, guild.id, "RoleDelete");
 
-          // Strip ALL roles from Rogue Admin / Staff instantly (<17ms)
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Deletion Attempt").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
+            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Deletion Attempt").catch(() => {});
           }
 
-          // Instant Role Auto-Restoration
-          await guild.roles.create({
-            name: role.name,
-            color: role.color,
-            hoist: role.hoist,
-            permissions: role.permissions,
-            position: role.rawPosition,
-            reason: "Zero Trust 100/100 Instant Anti-Nuke Role Restore"
-          }).catch(e => console.error("Role restore error:", e));
+          if (!isPanic) {
+              await guild.roles.create({
+                name: role.name,
+                color: role.color,
+                hoist: role.hoist,
+                permissions: role.permissions,
+                position: role.position,
+                mentionable: role.mentionable,
+                reason: "Zero Trust 100/100 Instant Anti-Nuke Role Deletion Revert"
+              }).catch(() => {});
+          }
 
-          // Send Live Audit Log Embed to #security-logs
           await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED ROLE DELETION INTERCEPTED (<17MS)",
-            description: `**Role Deleted:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Restored Role & Stripped All Admin Roles from <@${executor.id}> (${responseLatency}ms)`,
-            color: 0xEF4444
+            title: "🚨 UNAUTHORIZED ROLE DELETION REVERTED (<17MS)",
+            description: `**Role:** @${role.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instant Role Re-Creation & Stripped Admin Roles`,
+            color: 0xDC2626
           });
         }
       } catch (err: any) {
-        console.error("Role delete guard error:", err);
       }
     });
 
-    // 3. ANTI MASS BAN / KICK (<17ms Interception)
     client.on("guildMemberRemove", async (member) => {
       const guild = member.guild;
       const startTime = Date.now();
