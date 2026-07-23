@@ -1497,6 +1497,125 @@ export async function startDiscordBot() {
       }
     });
 
+    
+    // 7. ANTI CHANNEL PERMISSION OVERRIDE / UPDATE (<17ms)
+    client.on("channelUpdate", async (oldChannel, newChannel) => {
+      if (!("guild" in newChannel) || !newChannel.guild) return;
+      const guild = newChannel.guild;
+      
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelUpdate, newChannel.id, 2, 500);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel update on #${newChannel.name} by ${executor.tag}! Reverting...`, "error");
+          
+          const execMember = await guild.members.fetch(executor.id).catch(() => null);
+          if (execMember && execMember.id !== guild.ownerId) {
+            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Channel Update").catch(() => {});
+          }
+
+          if (!isPanic) {
+             // Revert permissions and settings
+             if (oldChannel.type === newChannel.type && 'permissionOverwrites' in oldChannel && 'permissionOverwrites' in newChannel) {
+                 await (newChannel as any).edit({
+                     name: (oldChannel as any).name,
+                     topic: (oldChannel as any).topic,
+                     permissionOverwrites: (oldChannel as any).permissionOverwrites.cache,
+                     reason: "Zero Trust Anti-Nuke: Channel Update Revert"
+                 }).catch(() => {});
+             }
+          }
+
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED CHANNEL UPDATE REVERTED",
+            description: `**Channel:** #${newChannel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Reverted changes & Stripped Admin Roles`,
+            color: 0xDC2626
+          });
+        }
+      } catch (err) {}
+    });
+
+    // 8. ANTI ROLE UPDATE (Prevent giving Admin/Dangerous perms)
+    client.on("roleUpdate", async (oldRole, newRole) => {
+      const guild = newRole.guild;
+      
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleUpdate, newRole.id, 2, 500);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role update on @${newRole.name} by ${executor.tag}! Reverting...`, "error");
+          
+          const execMember = await guild.members.fetch(executor.id).catch(() => null);
+          if (execMember && execMember.id !== guild.ownerId) {
+            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Role Update").catch(() => {});
+          }
+
+          if (!isPanic) {
+             await newRole.edit({
+                 name: oldRole.name,
+                 color: oldRole.color,
+                 hoist: oldRole.hoist,
+                 permissions: oldRole.permissions,
+                 mentionable: oldRole.mentionable,
+                 reason: "Zero Trust Anti-Nuke: Role Update Revert"
+             }).catch(() => {});
+          }
+
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED ROLE UPDATE REVERTED",
+            description: `**Role:** @${newRole.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Reverted changes & Stripped Admin Roles`,
+            color: 0xDC2626
+          });
+        }
+      } catch (err) {}
+    });
+
+    // 9. ANTI MEMBER ROLE UPDATE (Prevent rogue admins from assigning Admin roles to others/bots)
+    client.on("guildMemberUpdate", async (oldMember, newMember) => {
+      const guild = newMember.guild;
+      
+      // If roles didn't change, ignore
+      if (oldMember.roles.cache.size === newMember.roles.cache.size) return;
+
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.MemberRoleUpdate, newMember.id, 2, 500);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          // Check if dangerous roles were added
+          const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
+          const hasDangerousPerms = addedRoles.some(r => r.permissions.has("Administrator") || r.permissions.has("ManageGuild") || r.permissions.has("ManageRoles") || r.permissions.has("ManageChannels") || r.permissions.has("BanMembers"));
+
+          if (hasDangerousPerms) {
+              addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] ${executor.tag} tried to give dangerous roles to ${newMember.user.tag}! Reverting...`, "error");
+              
+              const execMember = await guild.members.fetch(executor.id).catch(() => null);
+              if (execMember && execMember.id !== guild.ownerId) {
+                await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Member Role Assignment").catch(() => {});
+              }
+
+              if (!isPanic) {
+                 await newMember.roles.set(oldMember.roles.cache, "Zero Trust Anti-Nuke: Member Role Revert").catch(() => {});
+              }
+
+              await sendLiveAuditAlert(guild, {
+                title: "🚨 UNAUTHORIZED ROLE ASSIGNMENT REVERTED",
+                description: `**Target Member:** ${newMember.user.tag}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Reverted roles & Stripped Admin Roles from the rogue admin.`,
+                color: 0xDC2626
+              });
+          }
+        }
+      } catch (err) {}
+    });
+
     client.on("guildBanAdd", async (ban) => {
       const guild = ban.guild;
       const startTime = Date.now();
