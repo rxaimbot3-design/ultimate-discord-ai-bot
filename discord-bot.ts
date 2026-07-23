@@ -192,6 +192,67 @@ function isOwnerOrWhitelisted(memberId: string, guild: Guild): boolean {
   return false;
 }
 
+
+// 🚨 REAL GOD MODE: EVENT VELOCITY TRACKING 🚨
+const eventVelocity = {
+  channelCreate: { count: 0, lastReset: Date.now() },
+  channelDelete: { count: 0, lastReset: Date.now() },
+  roleCreate: { count: 0, lastReset: Date.now() },
+  roleDelete: { count: 0, lastReset: Date.now() }
+};
+
+let isQuarantineActive = false;
+
+function checkVelocity(eventType) {
+  const now = Date.now();
+  const tracker = eventVelocity[eventType];
+  
+  if (now - tracker.lastReset > 2000) { // Reset every 2 seconds
+    tracker.count = 0;
+    tracker.lastReset = now;
+  }
+  
+  tracker.count++;
+  
+  // If more than 3 events in 2 seconds, it's a script/botnet attack
+  if (tracker.count > 3) {
+    return true;
+  }
+  return false;
+}
+
+async function emergencyQuarantine(guild) {
+    if (isQuarantineActive) return;
+    isQuarantineActive = true;
+    panicLockdownActive = true;
+    
+    addBotLog("🚨 [GOD MODE] MASS ATTACK DETECTED! INITIATING BLIND QUARANTINE...", "error");
+    
+    // Attempt to strip dangerous permissions from ALL roles below the bot
+    const botRolePosition = guild.members.me?.roles.highest.position || 0;
+    
+    const roles = await guild.roles.fetch();
+    for (const [id, role] of roles) {
+        if (role.position < botRolePosition && !role.managed && id !== guild.id) {
+            if (role.permissions.has("Administrator") || role.permissions.has("ManageChannels") || role.permissions.has("ManageRoles") || role.permissions.has("ManageGuild")) {
+                await role.setPermissions(role.permissions.remove(["Administrator", "ManageChannels", "ManageRoles", "ManageGuild", "ManageWebhooks", "BanMembers", "KickMembers"]), "GOD MODE: Quarantining Rogue Roles").catch(() => {});
+            }
+        }
+    }
+    
+    // Also lock down everyone
+    for (const [id, ch] of guild.channels.cache) {
+        if (ch && 'permissionOverwrites' in ch) {
+            await ch.permissionOverwrites.edit(guild.roles.everyone, {
+                SendMessages: false,
+                Connect: false
+            }).catch(() => {});
+        }
+    }
+    
+    setTimeout(() => { isQuarantineActive = false; }, 60000); // Reset quarantine lock after 1 min
+}
+
 // Record action and check if 100-Nuker Simultaneous Burst threshold is triggered
 function checkNukerAttackThreshold(userId: string, guildId: string, actionType: string): boolean {
   const now = Date.now();
@@ -1316,13 +1377,17 @@ export async function startDiscordBot() {
       const startTime = Date.now();
       
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
-      if (isPanic) {
-          // Instant Channel Auto-Deletion without waiting for audit log
-          await channel.delete("Zero Trust 100/100 Instant Anti-Nuke Channel Creation Revert (PANIC MODE)").catch(() => {});
+      const isUnderMassAttack = checkVelocity("channelCreate");
+
+      if (isPanic || isUnderMassAttack || isQuarantineActive) {
+          if (isUnderMassAttack) emergencyQuarantine(guild);
+          // INSTANT BLIND REVERT - NO API LOG CHECKS to prevent rate limits
+          await channel.delete("GOD MODE: Blind Revert (Mass Attack Detected)").catch(() => {});
+          return;
       }
 
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id, 2, 500); // lower retries for performance
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelCreate, channel.id, 1, 300); // lower retries for performance
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1369,19 +1434,23 @@ export async function startDiscordBot() {
       const startTime = Date.now();
 
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
-      if (isPanic) {
-          // Re-create the channel instantly
-          const clonedChannel = await guild.channels.create({
+      const isUnderMassAttack = checkVelocity("channelDelete");
+
+      if (isPanic || isUnderMassAttack || isQuarantineActive) {
+          if (isUnderMassAttack) emergencyQuarantine(guild);
+          // BLIND RECREATE
+          await guild.channels.create({
             name: channel.name,
             type: channel.type,
             permissionOverwrites: channel.permissionOverwrites?.cache || [],
             parent: channel.parentId,
-            reason: "Zero Trust 100/100 Instant Anti-Nuke Channel Deletion Revert (PANIC MODE)"
+            reason: "GOD MODE: Blind Recreate (Mass Attack Detected)"
           }).catch(() => {});
+          return;
       }
 
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id, 2, 500);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelDelete, channel.id, 1, 300);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1430,12 +1499,16 @@ export async function startDiscordBot() {
       const startTime = Date.now();
 
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
-      if (isPanic) {
-          await role.delete("Zero Trust 100/100 Instant Anti-Nuke Role Creation Revert (PANIC MODE)").catch(() => {});
+      const isUnderMassAttack = checkVelocity("roleCreate");
+
+      if (isPanic || isUnderMassAttack || isQuarantineActive) {
+          if (isUnderMassAttack) emergencyQuarantine(guild);
+          await role.delete("GOD MODE: Blind Revert (Mass Attack Detected)").catch(() => {});
+          return;
       }
 
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id, 2, 500);
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.RoleCreate, role.id, 1, 300);
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
