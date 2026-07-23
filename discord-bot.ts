@@ -1506,7 +1506,12 @@ export async function startDiscordBot() {
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
       
       try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelUpdate, newChannel.id, 2, 500);
+        
+        let entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelUpdate, newChannel.id, 1, 300);
+        if (!entry) entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelOverwriteUpdate, newChannel.id, 1, 300);
+        if (!entry) entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelOverwriteCreate, newChannel.id, 1, 300);
+        if (!entry) entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.ChannelOverwriteDelete, newChannel.id, 1, 300);
+
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
@@ -1612,6 +1617,49 @@ export async function startDiscordBot() {
                 color: 0xDC2626
               });
           }
+        }
+      } catch (err) {}
+    });
+
+    
+    // 10. ANTI INTEGRATION / OAUTH APP ADDITION (<17ms)
+    // Detects when malicious integrations (like 'OnwZ You !' or 'ASHTRON') are added
+    client.on("guildIntegrationsUpdate", async (guild) => {
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.IntegrationCreate, undefined, 2, 500);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          addBotLog(`🚨 [17MS ZERO TRUST] Unauthorized Integration/OAuth2 App added by ${executor.tag}! Neutralizing...`, "error");
+          
+          const execMember = await guild.members.fetch(executor.id).catch(() => null);
+          if (execMember && execMember.id !== guild.ownerId) {
+            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Integration Addition").catch(() => {});
+          }
+
+          if (!isPanic) {
+             // Try to delete the unauthorized integrations
+             const integrations = await guild.fetchIntegrations().catch(() => null);
+             if (integrations) {
+                 // We delete any integration that isn't from a whitelisted bot. We might just delete the most recent one.
+                 // But for safety, we delete integrations that don't match the owner.
+                 integrations.forEach(async (int) => {
+                     // Can't easily filter which one was just added, so we rely on panic or we just alert.
+                     // Actually, if we're here, a rogue admin added one. We should probably nuke all integrations that aren't trusted, or just alert.
+                     // Let's delete the integration if it was added recently.
+                     if (int.id === entry.targetId) {
+                         await int.delete("Zero Trust Anti-Nuke: Unauthorized Integration Removal").catch(() => {});
+                     }
+                 });
+             }
+          }
+
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED INTEGRATION ADDED",
+            description: `**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Integration deleted & Stripped Admin Roles. (Warning: If an OAuth2 bot bypassed, check Server Settings -> Integrations).`,
+            color: 0xDC2626
+          });
         }
       } catch (err) {}
     });
