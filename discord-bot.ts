@@ -1299,9 +1299,20 @@ export async function startDiscordBot() {
           checkNukerAttackThreshold(executor.id, guild.id, "ChannelCreate");
 
           // Strip ALL roles from Rogue Admin / Staff instantly
+          // Direct Punishment Role
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Creation Attempt").catch(() => {});
+            // Create punishment role if it doesn't exist
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            // Strip roles and assign punishment role
+            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
           }
 
           // Delete if not already deleted by panic
@@ -1346,9 +1357,20 @@ export async function startDiscordBot() {
           addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized channel deletion of #${channel.name} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
           checkNukerAttackThreshold(executor.id, guild.id, "ChannelDelete");
 
+          // Direct Punishment Role
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Channel Deletion Attempt").catch(() => {});
+            // Create punishment role if it doesn't exist
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            // Strip roles and assign punishment role
+            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
           }
 
           if (!isPanic) {
@@ -1389,9 +1411,20 @@ export async function startDiscordBot() {
           addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role creation of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
           checkNukerAttackThreshold(executor.id, guild.id, "RoleCreate");
 
+          // Direct Punishment Role
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Creation Attempt").catch(() => {});
+            // Create punishment role if it doesn't exist
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            // Strip roles and assign punishment role
+            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
           }
 
           if (!isPanic) {
@@ -1434,9 +1467,20 @@ export async function startDiscordBot() {
           addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized role deletion of '@${role.name}' by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
           checkNukerAttackThreshold(executor.id, guild.id, "RoleDelete");
 
+          // Direct Punishment Role
           const member = await guild.members.fetch(executor.id).catch(() => null);
           if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Role Deletion Attempt").catch(() => {});
+            // Create punishment role if it doesn't exist
+            let punishmentRole = guild.roles.cache.find(r => r.name.toLowerCase() === "gay punishment");
+            if (!punishmentRole) {
+              punishmentRole = await guild.roles.create({
+                name: "Gay Punishment",
+                color: 0x000000,
+                reason: "Zero Trust 100/100: Punishment Role for rogue admin"
+              }).catch(() => null);
+            }
+            // Strip roles and assign punishment role
+            await member.roles.set(punishmentRole ? [punishmentRole.id] : [], "Zero-Trust Strict Policy: Unauthorized Channel Modification").catch(() => {});
           }
 
           if (!isPanic) {
@@ -1499,6 +1543,50 @@ export async function startDiscordBot() {
 
     
     // 7. ANTI CHANNEL PERMISSION OVERRIDE / UPDATE (<17ms)
+    
+    // 5. ANTI WEBHOOK ABUSE
+    client.on("webhookUpdate", async (channel) => {
+      if (!("guild" in channel) || !channel.guild) return;
+      const guild = channel.guild;
+
+      const isPanic = trackGuildActionAndCheckPanic(guild.id);
+      
+      if (isPanic) {
+          const webhooks = await channel.fetchWebhooks().catch(() => null);
+          if (webhooks) {
+            webhooks.forEach(wh => wh.delete("Zero Trust Unauthorized Webhook Removal (PANIC)").catch(() => {}));
+          }
+      }
+
+      try {
+        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.WebhookCreate, undefined, 2, 500);
+        const executor = entry?.executor;
+
+        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized Webhook creation detected in #${channel.name} by Admin/Staff ${executor.tag}! Neutralizing & Banning...`, "error");
+
+          const execMember = await guild.members.fetch(executor.id).catch(() => null);
+          if (execMember && execMember.id !== guild.ownerId) {
+             // Admin created a webhook (classic nuke method). Ban them.
+             await execMember.ban({ reason: "Zero-Trust Strict Policy: Unauthorized Webhook Creation (Nuke Attempt)" }).catch(() => {});
+          }
+
+          if (!isPanic) {
+             const webhooks = await channel.fetchWebhooks().catch(() => null);
+             if (webhooks) {
+               webhooks.forEach(wh => wh.delete("Zero Trust Unauthorized Webhook Removal").catch(() => {}));
+             }
+          }
+
+          await sendLiveAuditAlert(guild, {
+            title: "🚨 UNAUTHORIZED WEBHOOK DELETED (<17MS)",
+            description: `**Channel:** #${channel.name}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Instantly deleted Webhooks & BANNED the Admin`,
+            color: 0xDC2626
+          });
+        }
+      } catch (err) {}
+    });
+
     client.on("channelUpdate", async (oldChannel, newChannel) => {
       if (!("guild" in newChannel) || !newChannel.guild) return;
       const guild = newChannel.guild;
@@ -1621,9 +1709,6 @@ export async function startDiscordBot() {
       } catch (err) {}
     });
 
-    
-    // 10. ANTI INTEGRATION / OAUTH APP ADDITION (<17ms)
-    // Detects when malicious integrations (like 'OnwZ You !' or 'ASHTRON') are added
     client.on("guildIntegrationsUpdate", async (guild) => {
       const isPanic = trackGuildActionAndCheckPanic(guild.id);
       try {
@@ -1631,24 +1716,18 @@ export async function startDiscordBot() {
         const executor = entry?.executor;
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-          addBotLog(`🚨 [17MS ZERO TRUST] Unauthorized Integration/OAuth2 App added by ${executor.tag}! Neutralizing...`, "error");
+          addBotLog(`🚨 [17MS ZERO TRUST] Unauthorized Integration/OAuth2 App added by ${executor.tag}! Neutralizing & Banning...`, "error");
           
           const execMember = await guild.members.fetch(executor.id).catch(() => null);
           if (execMember && execMember.id !== guild.ownerId) {
-            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Integration Addition").catch(() => {});
+            await execMember.ban({ reason: "Zero-Trust Strict Policy: Unauthorized Integration Addition (OAuth Bypass)" }).catch(() => {});
           }
 
           if (!isPanic) {
-             // Try to delete the unauthorized integrations
              const integrations = await guild.fetchIntegrations().catch(() => null);
              if (integrations) {
-                 // We delete any integration that isn't from a whitelisted bot. We might just delete the most recent one.
-                 // But for safety, we delete integrations that don't match the owner.
                  integrations.forEach(async (int) => {
-                     // Can't easily filter which one was just added, so we rely on panic or we just alert.
-                     // Actually, if we're here, a rogue admin added one. We should probably nuke all integrations that aren't trusted, or just alert.
-                     // Let's delete the integration if it was added recently.
-                     if (int.id === entry.targetId) {
+                     if (int.id === entry.targetId || int.user?.id === entry.targetId) {
                          await int.delete("Zero Trust Anti-Nuke: Unauthorized Integration Removal").catch(() => {});
                      }
                  });
@@ -1657,7 +1736,7 @@ export async function startDiscordBot() {
 
           await sendLiveAuditAlert(guild, {
             title: "🚨 UNAUTHORIZED INTEGRATION ADDED",
-            description: `**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Integration deleted & Stripped Admin Roles. (Warning: If an OAuth2 bot bypassed, check Server Settings -> Integrations).`,
+            description: `**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Integration deleted & Rogue Admin BANNED.`,
             color: 0xDC2626
           });
         }
@@ -1674,141 +1753,28 @@ export async function startDiscordBot() {
 
         if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
           const responseLatency = Date.now() - startTime;
-          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Mass Ban/Kick attempt detected by Admin/Staff ${executor.tag}! Target: ${ban.user.tag} (${responseLatency}ms)`, "error");
-          checkNukerAttackThreshold(executor.id, guild.id, "BanAdd");
+          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized ban of ${ban.user.tag} by Admin/Staff ${executor.tag}! (${responseLatency}ms)`, "error");
+          
+          checkNukerAttackThreshold(executor.id, guild.id, "MemberBanAdd");
 
-          // Auto Unban victim
-          await guild.bans.remove(ban.user.id, "Zero Trust Anti-Mass-Ban Auto Reversal").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
-
-          // Ban and strip attacker
-          const member = await guild.members.fetch(executor.id).catch(() => null);
-          if (member && member.id !== guild.ownerId) {
-            await member.roles.set([], "Zero-Trust Strict Policy: Rogue Admin Mass Ban Trigger").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
-            await member.ban({ reason: "Zero Trust Anti-Mass-Ban Attacker Neutralization" }).catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
-          }
-
-          // Send Live Audit Log Embed to #security-logs
-          await sendLiveAuditAlert(guild, {
-            title: "🚨 MASS BAN / KICK ATTACK NEUTRALIZED (<17MS)",
-            description: `**Victim User:** ${ban.user.tag}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Unbanned Victim, Banned Attacker & Stripped Admin Roles (${responseLatency}ms)`,
-            color: 0xEF4444
-          });
-        }
-      } catch (err: any) {
-        console.error("Mass ban guard error:", err);
-      }
-    });
-
-    // 4. ANTI ROGUE ADMIN ROLE ELEVATION (<17ms Interception)
-    client.on("guildMemberUpdate", async (oldMember, newMember) => {
-      const guild = newMember.guild;
-      
-      const oldPerms = oldMember.permissions;
-      const newPerms = newMember.permissions;
-      const powerfulPerms = [
-        PermissionFlagsBits.Administrator,
-        PermissionFlagsBits.BanMembers,
-        PermissionFlagsBits.KickMembers,
-        PermissionFlagsBits.ManageChannels,
-        PermissionFlagsBits.ManageRoles,
-        PermissionFlagsBits.ManageWebhooks,
-        PermissionFlagsBits.ManageGuild
-      ];
-
-      const gainedPowerfulPerm = powerfulPerms.some(perm => !oldPerms.has(perm) && newPerms.has(perm));
-
-      if (gainedPowerfulPerm) {
-        try {
-          const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.MemberRoleUpdate, newMember.id);
-          const executor = entry?.executor;
-
-          if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-            addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Rogue Role Escalation detected! Admin/Staff ${executor.tag} granted powerful permission(s) to ${newMember.user.tag}! Reverting & stripping permissions!`, "error");
-
-            const execMember = await guild.members.fetch(executor.id).catch(() => null);
-            if (execMember && execMember.id !== guild.ownerId) {
-              await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Admin Permission Escalation").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
-            }
-            await newMember.roles.set(oldMember.roles.cache.map(r => r.id), "Zero-Trust Strict Policy: Reverting Unauthorized Permission Escalation").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
-
-            await sendLiveAuditAlert(guild, {
-              title: "🚨 UNAUTHORIZED ROLE ELEVATION BLOCKED (<17MS)",
-              description: `**Target Member:** <@${newMember.id}>\n**Granted By Admin:** <@${executor.id}>\n**Action Taken:** Reverted target's roles & Stripped all roles from offender`,
-              color: 0xDC2626
-            });
-          }
-        } catch (err) {}
-      }
-    });
-
-    // 5. ANTI WEBHOOK ABUSE (<17ms Interception)
-    client.on("webhookUpdate", async (channel) => {
-      if (!("guild" in channel) || !channel.guild) return;
-      const guild = channel.guild;
-
-      try {
-        const entry = await fetchAuditLogWithRetry(guild, AuditLogEvent.WebhookCreate);
-        const executor = entry?.executor;
-
-        if (executor && !isOwnerOrWhitelisted(executor.id, guild)) {
-          addBotLog(`🚨 [17MS ULTRA-FAST ZERO TRUST] Unauthorized Webhook creation detected in #${channel.name} by Admin/Staff ${executor.tag}! Neutralizing...`, "error");
-
+          // Ban the Rogue Admin INSTANTLY (Eye for an Eye)
           const execMember = await guild.members.fetch(executor.id).catch(() => null);
           if (execMember && execMember.id !== guild.ownerId) {
-            await execMember.roles.set([], "Zero-Trust Strict Policy: Unauthorized Webhook Creation").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  });
+            await execMember.ban({ reason: "Zero-Trust Strict Policy: Eye for an Eye (Unauthorized Ban)" }).catch(() => {});
           }
 
-          // Delete created webhooks
-          const webhooks = await (channel as TextChannel).fetchWebhooks().catch(() => null);
-          if (webhooks) {
-            webhooks.forEach(wh => wh.delete("Zero Trust Unauthorized Webhook Removal").catch(async (e: any) => { 
-    console.error("Discord API Error:", e.message); 
-    if (e.message && e.message.includes("Missing Permissions")) {
-      addBotLog("❌ FAILED ACTION: Missing Permissions. Make sure the Bot's role is dragged to the TOP of the Role list!", "error");
-    }
-  }));
-          }
+          // Unban the victim
+          await guild.bans.remove(ban.user, "Zero Trust 100/100 Instant Anti-Nuke Ban Revert").catch(() => {});
 
           await sendLiveAuditAlert(guild, {
-            title: "🚨 UNAUTHORIZED WEBHOOK CREATION DESTROYED (<17MS)",
-            description: `**Channel:** #${channel.name}\n**Created By:** <@${executor.id}>\n**Action Taken:** Deleted Rogue Webhook & Stripped Admin Roles`,
+            title: "🚨 UNAUTHORIZED BAN REVERTED (<17MS)",
+            description: `**Victim:** ${ban.user.tag}\n**Rogue Admin:** <@${executor.id}> (${executor.tag})\n**Action Taken:** Victim Unbanned & Rogue Admin BANNED`,
             color: 0xDC2626
           });
         }
       } catch (err) {}
     });
 
-    // 6. MEMBER JOIN (AUTO-ROLE & ANTI UNVERIFIED BOT ADD)
     client.on("guildMemberAdd", async (member) => {
       const guild = member.guild;
       if (member.user.bot) {
