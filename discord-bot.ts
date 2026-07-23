@@ -890,6 +890,10 @@ export async function startDiscordBot() {
       }
 
       if (commandName === "setup-verify") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.deferReply();
         try {
           const res = await auditAndApplyVerifiedRolePermissions(guild, verifiedRoleName);
@@ -943,6 +947,10 @@ export async function startDiscordBot() {
       }
 
       if (commandName === "deploy-defense") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.deferReply();
         try {
           addBotLog(`🚀 [/deploy-defense] Triggered by ${interaction.user.tag} in '${guild.name}'! Deploying 100/100 Zero Trust Anti-Nuke Shield...`, "info");
@@ -1011,6 +1019,10 @@ export async function startDiscordBot() {
       }
 
       if (commandName === "verify-audit") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         await interaction.deferReply();
         const roleName = interaction.options.getString("rolename") || verifiedRoleName;
         try {
@@ -1093,6 +1105,10 @@ export async function startDiscordBot() {
       }
 
       if (commandName === "lock-vc") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         const targetChannel = interaction.options.getChannel("channel");
         if (!targetChannel || targetChannel.type !== ChannelType.GuildVoice) {
           await interaction.reply({ content: "❌ Please specify a valid Voice Channel.", ephemeral: true });
@@ -1106,6 +1122,10 @@ export async function startDiscordBot() {
       }
 
       if (commandName === "unlock-vc") {
+        if (!isOwnerOrWhitelisted(interaction.user.id, guild)) {
+          await interaction.reply({ content: "❌ **Access Denied!** Only the Server Owner or Whitelisted Users can execute this command.", ephemeral: true });
+          return;
+        }
         const targetChannel = interaction.options.getChannel("channel");
         if (!targetChannel || targetChannel.type !== ChannelType.GuildVoice) {
           await interaction.reply({ content: "❌ Please specify a valid Voice Channel.", ephemeral: true });
